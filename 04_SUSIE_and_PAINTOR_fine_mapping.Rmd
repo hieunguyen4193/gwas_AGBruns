@@ -1,0 +1,292 @@
+---
+title: "Genome-wide association analysis, data `r params$group`, FINE MAPPING WITH SUSIE AND PAINTOR"
+author:
+  - "trnguyen@ukaachen.de"
+date: "Last update on `r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    keep_md: no
+    df_print: paged
+    toc: true
+    toc_float:
+      toc_collapsed: false
+    toc_depth: 3
+    number_sections: true
+    theme: lumen
+params:
+  stratum: NA
+  maf: NA
+  chrom: NA
+  region.start: NA
+  region.end: NA
+  path.to.04.output: NA
+---
+
+
+```{css zoom-lib-src, echo = FALSE}
+script src = "https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"
+```
+
+```{js zoom-jquery, echo = FALSE}
+ $(document).ready(function() {
+    $('body').prepend('<div class=\"zoomDiv\"><img src=\"\" class=\"zoomImg\"></div>');
+    // onClick function for all plots (img's)
+    $('img:not(.zoomImg)').click(function() {
+      $('.zoomImg').attr('src', $(this).attr('src')).css({width: '100%'});
+      $('.zoomDiv').css({opacity: '1', width: 'auto', border: '1px solid white', borderRadius: '5px', position: 'fixed', top: '50%', left: '50%', marginRight: '-50%', transform: 'translate(-50%, -50%)', boxShadow: '0px 0px 50px #888888', zIndex: '50', overflow: 'auto', maxHeight: '100%'});
+    });
+    // onClick function for zoomImg
+    $('img.zoomImg').click(function() {
+      $('.zoomDiv').css({opacity: '0', width: '0%'}); 
+    });
+  });
+```
+
+<style type="text/css">
+    div.datatables { height: auto !important;}
+</style>
+
+
+# SUSIE
+
+```{r echo=FALSE, warning=FALSE, include=FALSE, results='hide', fig.width=14, fig.height=10}
+
+library(dplyr)
+library(tidyverse)
+if ("susieR" %in% installed.packages() == FALSE){
+ install.packages("susieR") 
+}
+library(susieR)
+
+#####---------------------------------------------------------------------######
+##### INPUT ARGS
+#####---------------------------------------------------------------------######
+
+maf <- params$maf
+stratum <- params$stratum
+chrom <- params$chrom
+region.start <- params$region.start
+region.end <- params$region.end
+path.to.04.output <- params$path.to.04.output
+
+# maf <- 0.01
+# stratum <- "SBP_ever"
+# chrom <- 8
+# region.start <- "8000000"
+# region.end <- "9900000"
+# path.to.04.output <- sprintf("/home/hieunguyen/CRC1382/outdir/AGBruns_SNP_data_full_corrected_20240312/04_output/SBP_ever/MAF_0.01/basic_assoc/chr%s_%s_%s", chrom, region.start, region.end)
+
+PROJECT <- "AGBruns_SNP_data_full_corrected_20240312"
+outdir <- "/home/hieunguyen/CRC1382/outdir"
+
+path.to.project.src <- file.path("/home/hieunguyen/CRC1382/src_2023", PROJECT)
+source(file.path(path.to.project.src, "00_import_libraries.R"))
+source(file.path(path.to.project.src, "00_helper_functions.R"))
+
+path.to.storage <- "/home/hieunguyen/CRC1382/storage"
+main.data.dir <- file.path(path.to.storage, "AGBruns_SNP_data_full")
+
+path.to.main.output <- file.path(outdir, PROJECT)
+path.to.00.output <- file.path(path.to.main.output, "00_output")
+# path.to.04.output <- file.path(path.to.main.output, "04_output", stratum, sprintf("region_chr%s_%s_%s", chrom, region.start, region.end))
+
+create_dt <- function(x){
+  DT::datatable(x,
+                extensions = 'Buttons',
+                filter = "top",
+                options = list(dom = 'Blfrtip',
+                               buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+                               lengthMenu = list(c(10,25,50,-1),
+                                                 c(10,25,50,"All")),
+                               columnDefs = list(list(
+                                 targets = "_all",
+                                 render = JS(
+                                   "function(data, type, row, meta) {",
+                                   "return type === 'display' && data != null && data.length > 100 ?",
+                                   "'<span title=\"' + data + '\">' + data.substr(0, 100) + '...</span>' : data;",
+                                   "}")
+                               ))
+                ))
+}
+
+```
+
+
+```{r echo=FALSE, warning=FALSE, include=TRUE, results='asis', fig.width=14, fig.height=10}
+##### Input PLINK asssoc results
+mapdf <- read.csv(file.path(path.to.04.output, sprintf("region_chr%s_%s_%s.raw.map", chrom, region.start, region.end))) %>%
+  subset(select = -c(X))
+ld.matrix <- read.table(file.path(path.to.04.output, "plink.r.matrix.ld"), header = FALSE) 
+
+colnames(ld.matrix) <- mapdf$Name
+row.names(ld.matrix) <- mapdf$Name
+
+path.to.plink.output <- file.path(outdir, PROJECT, "PLINK_results", sprintf("maf_%s", maf), sprintf("%s_results_maf_%s", stratum, maf))
+
+assocdf <- read.table(file.path(path.to.plink.output, "plink.assoc"), header = TRUE) %>%
+  subset(SNP %in% mapdf$Name) %>%
+  rowwise() %>%
+  mutate(logOR = log10(OR)) %>%
+  mutate(signOR = ifelse(logOR >= 0, 1, -1)) %>% 
+  mutate(zscore = signOR * qnorm(0.5 * P))
+
+ld.matrix <- ld.matrix[assocdf$SNP, assocdf$SNP]
+plink.res <- assocdf
+
+if ( nrow(subset(plink.res, plink.res$P <= 5e-8 )) != 0){
+  snps <- subset(plink.res, plink.res$P <= 5e-8)$name
+  # the next top 20
+  snps.next20 <- plink.res %>% subset(P > 5e-8) %>% arrange(desc(P)) %>% tail(20)
+  snps.next20 <- snps.next20$
+  snps <- rbind(snps, snps.next20)
+} else {
+  snps <- plink.res %>% arrange(desc(P)) %>% tail(20)
+}
+
+candidate.snps <- snps
+```
+
+## Diagnostic plot for the LD-MATRIX to be used in SUSIE with summary statistics
+```{r echo=FALSE, warning=FALSE, include=TRUE, results='asis', fig.width=14, fig.height=10}
+ld.matrix <- as.matrix(ld.matrix)
+ld.matrix[!is.finite(ld.matrix)] <- 0
+lambda <- estimate_s_rss(assocdf$zscore, ld.matrix, n=480)
+condz_in <- kriging_rss(assocdf$zscore, ld.matrix, n=480)
+condz_in$plot
+```
+
+## Fine-Mapping results, blue = selected causal variants
+
+### PIP plot for all SNPs
+```{r echo=FALSE, warning=FALSE, include=TRUE, results='asis', fig.width=14, fig.height=10}
+fitted.susie_rss <- susie_rss(z = assocdf$zscore, R =  as.matrix(ld.matrix), n =  480, L = 5, estimate_residual_variance = TRUE)
+
+susie_plot(fitted.susie_rss, y="PIP", add_bar = TRUE, add_legend = TRUE, L = 2)
+```
+
+### Result table
+```{r echo=FALSE, warning=FALSE, include=TRUE, results='asis', fig.width=14, fig.height=10}
+tmpdf <- fitted.susie_rss$pip %>% as.data.frame() %>% rownames_to_column("SNP")
+colnames(tmpdf) <- c("SNP", "PIP")
+
+assocdf <- merge(assocdf, tmpdf, by.x = "SNP", by.y = "SNP")
+assocdf %>% arrange(desc(PIP)) %>% create_dt()
+```
+
+# PAINTOR
+
+## Result table
+```{r echo=FALSE, warning=FALSE, include=TRUE, message=FALSE, results='asis', fig.width=14, fig.height=10}
+path.to.paintor.output <- file.path(path.to.04.output, "PAINTOR")
+
+paintor.prob.output <- file.path(path.to.paintor.output, "Locus.results")
+
+paintor.output <- read.table(paintor.prob.output, header = TRUE) %>%
+  arrange(desc(Posterior_Prob))
+
+paintor.output %>% create_dt()
+```
+
+# LOCUS ZOOM
+```{r echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=14, fig.height=10}
+##### choose the snp who p value is smallest to be the lead SNP
+chosen.snp <- subset(assocdf, assocdf$P == min(assocdf$P))$SNP
+mapdf <- read.table(file.path(path.to.04.output, sprintf("region_chr%s_%s_%s.raw.map", chrom, region.start, region.end)), sep = ",", header = TRUE) %>%
+  subset(select = -c(X))
+
+path.to.ld.matrix <- file.path(path.to.04.output, "plink.r2.matrix.ld")
+
+path.to.assoc.file <- file.path(outdir, PROJECT, "PLINK_results", sprintf("maf_%s", maf), sprintf("%s_results_maf_%s", stratum, maf), "plink.assoc")
+
+assocdf <- read.table(path.to.assoc.file, stringsAsFactors = FALSE, header = TRUE)
+assocdf.original <- assocdf
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=14, fig.height=10}
+print(sprintf("In the case %s, there are %s SNPs tested.", stratum, nrow(assocdf.original)))
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=14, fig.height=10}
+print(sprintf("In the region %s:%s-%s, there are %s SNPs", chrom, region.start, region.end, nrow(mapdf)))
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=14, fig.height=10}
+ld.matrix <- read.table(path.to.ld.matrix, stringsAsFactors = FALSE, header = FALSE)
+
+colnames(ld.matrix) <- mapdf$Name
+row.names(ld.matrix) <- mapdf$Name
+
+ld.matrix <- data.frame(R2 = ld.matrix[, c(chosen.snp)])
+ld.matrix$SNP_A <- chosen.snp
+ld.matrix$SNP_B <- mapdf$Name
+ld.matrix <- subset(ld.matrix, ld.matrix$SNP_B != chosen.snp)
+
+input.ld.matrix <- ld.matrix
+
+assocdf <- assocdf %>%
+  subset(SNP %in% mapdf$Name)
+
+assocdf$CHR <- unlist(
+  lapply(assocdf$SNP, function(x){
+    return(subset(mapdf, mapdf$Name == x)$Chr)
+  })
+)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=14, fig.height=10}
+print(sprintf("In the region %s:%s-%s, there are %s SNPs tested", chrom, region.start, region.end, nrow(assocdf)))
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=14, fig.height=10}
+assocdf %>% create_dt() 
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=14, fig.height=10}
+input.ld.matrix$CHR_A <- unlist(
+  lapply(input.ld.matrix$SNP_A, function(x){
+    return(subset(mapdf, mapdf$Name == x)$Chr)
+  })
+)
+
+input.ld.matrix$CHR_B <- unlist(
+  lapply(input.ld.matrix$SNP_B, function(x){
+    return(subset(mapdf, mapdf$Name == x)$Chr)
+  })
+)
+
+input.ld.matrix$BP_A <- unlist(
+  lapply(input.ld.matrix$SNP_A, function(x){
+    return(subset(mapdf, mapdf$Name == x)$BP)
+  })
+)
+
+input.ld.matrix$BP_B <- unlist(
+  lapply(input.ld.matrix$SNP_B, function(x){
+    return(subset(mapdf, mapdf$Name == x)$BP)
+  })
+)
+```
+
+```{r echo=FALSE, results='asis', fig.width=8, fig.height=8, dpi = 300}
+path.to.project.src <- file.path("/home/hieunguyen/CRC1382/src_2023", PROJECT)
+locuszoom.dir <- file.path(path.to.project.src, "LocusZooms")
+source(file.path(locuszoom.dir, "functions/locus_zoom.R"))
+Unique.genes <- read.delim(file.path(path.to.project.src, "locuszoom_genelist_v38", "Gencode_GRCh38_Genes_UniqueList.txt"), stringsAsFactors = FALSE, header = TRUE)
+p <- locus.zoom(data = assocdf,                                    
+           region = c(as.numeric(chrom), as.numeric(region.start), as.numeric(region.end)),                             
+           offset_bp = 0,                                                  
+           ld.file = input.ld.matrix,                                           
+           genes.data = Unique.genes,			                   
+           plot.title = "Check",        
+           file.name = file.path(path.to.project.src, sprintf("Locuszoom_%s_%s_%s_%s_%s.jpeg", stratum, chrom, region.start, region.end, maf)),
+           secondary.label = TRUE,
+           rsid.check = FALSE, plot.type = "view_only")
+```
+
+```{r echo=FALSE, warning=FALSE, include=TRUE, results='asis', fig.width=14, fig.height=10}
+```
