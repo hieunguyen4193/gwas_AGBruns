@@ -66,7 +66,7 @@ Raw data were transformed to `.ped` format by custom R-script and BASH-script.
 # gc()
 # rm(list = ls())
 
-path.to.project.src <- "/home/hieunguyen/CRC1382/src_2023/AGBruns_SNP_data_full"
+path.to.project.src <- "/home/hieunguyen/CRC1382/src_2023/gwas_AGBruns"
 
 source(file.path(path.to.project.src, "00_import_libraries.R"))
 source(file.path(path.to.project.src, "00_helper_functions.R"))
@@ -83,8 +83,8 @@ maf <- params$maf
 disease.model <- params$disease.model
 
 # group <- "SBP_ever"
-# maf <- 0.01
-# disease.model <- "DOM"
+# maf <- 0.05
+# disease.model <- "ALLEIC"
 
 num.show.topSNPs <- 100
 thres_call.freq <- 0.5
@@ -96,7 +96,7 @@ print(sprintf("Call frequency >= %s", thres_call.freq))
 print(sprintf("HWE Chi square test p.val >= %s", thres_hwe))
 print(sprintf("MAF >= %s", thres_maf))
 
-outdir <- "/home/hieunguyen/CRC1382/outdir"
+outdir <- "/media/hieunguyen/HD01/outdir/CRC1382"
 PROJECT <- "AGBruns_SNP_data_full_corrected_20240312"
 ```
 
@@ -250,7 +250,8 @@ subject.support %>% subset(select = -c(member, pedigree, father, mother, sex)) %
 
 # PLINK RESULTS (with different model settings)
 ```{r echo=FALSE, warning=FALSE, message=FALSE, include=FALSE, results='asis', fig.width=14, fig.height=10}
-
+outdir <- "/media/hieunguyen/HD01/outdir/CRC1382"
+PROJECT <- "AGBruns_SNP_data_full_corrected_20240312"
 path.to.plink.res <- file.path(outdir, PROJECT, "PLINK_results", sprintf("maf_%s_model", maf), sprintf("%s_with_models_results_maf_%s", group, maf), "plink.model")
 plink.res <- read.table(path.to.plink.res, header = FALSE)
 plink.res <- subset(plink.res, plink.res$V1 != "CHR")
@@ -271,6 +272,25 @@ plink.res <- subset(plink.res, is.na(plink.res$pval) == FALSE)
 
 ```
 
+```{r echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=10, fig.height=6}
+d <- read.table(path.to.plink.res, header = TRUE)
+obs <- sort(d$P)
+obs <- obs[!is.na(obs)]
+obs <- obs[is.finite(-log10(obs))]
+
+lobs <- -(log10(obs))
+
+exp <- c(1:length(obs)) 
+lexp <- -(log10(exp / (length(exp)+1)))
+
+chisq.plink <- qchisq(1-obs,1)
+
+lambda <- round(median(chisq.plink)/qchisq(0.5,1),2)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, results='asis'}
+qq.chisq(chisq.plink, df = 1)
+```
 
 ## Visualization
 

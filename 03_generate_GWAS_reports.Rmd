@@ -46,7 +46,7 @@ script src = "https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"
 
 <!-- Please skip this part if you are not going to re-run the scripts.  -->
 
-<!-- parallel -j 20 Rscript 01_generate_ped_and_fam_files.R -i {} -o '/home/hieunguyen/CRC1382/outdir/AGBruns_SNP_data_full/OUTPUT/parallel_processing/output_chunks' ::: /home/hieunguyen/CRC1382/outdir/AGBruns_SNP_data_full/OUTPUT/parallel_processing/input_chunks/* -->
+<!-- parallel -j 20 Rscript 01_generate_ped_and_fam_files.R -i {} -o '/media/hieunguyen/HD01/outdir/AGBruns_SNP_data_full/OUTPUT/parallel_processing/output_chunks' ::: /media/hieunguyen/HD01/outdir/AGBruns_SNP_data_full/OUTPUT/parallel_processing/input_chunks/* -->
 
 
 Raw data were transformed to `.ped` format by custom R-script and BASH-script.
@@ -65,7 +65,7 @@ Raw data were transformed to `.ped` format by custom R-script and BASH-script.
 # gc()
 # rm(list = ls())
 
-path.to.project.src <- "/home/hieunguyen/CRC1382/src_2023/AGBruns_SNP_data_full_corrected_20240312"
+path.to.project.src <- "/home/hieunguyen/CRC1382/src_2023/gwas_AGBruns"
 
 source(file.path(path.to.project.src, "00_import_libraries.R"))
 source(file.path(path.to.project.src, "00_helper_functions.R"))
@@ -81,7 +81,7 @@ group <- params$group
 maf <- params$maf
 
 # group <- "SBP_ever"
-# maf <- 0.01
+# maf <- 0.05
 
 num.show.topSNPs <- 100
 thres_call.freq <- 0.5
@@ -93,7 +93,8 @@ print(sprintf("Call frequency >= %s", thres_call.freq))
 print(sprintf("HWE Chi square test p.val >= %s", thres_hwe))
 print(sprintf("MAF >= %s", thres_maf))
 
-outdir <- "/home/hieunguyen/CRC1382/outdir"
+PROJECT <- "AGBruns_SNP_data_full_corrected_20240312"
+outdir <- "/media/hieunguyen/HD01/outdir/CRC1382"
 
 ```
 
@@ -344,7 +345,7 @@ ggplot(pvaldf, aes(x = p_val)) +
 
 # PLINK results
 ```{r echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=10, fig.height=6}
-outdir <- "/home/hieunguyen/CRC1382/outdir"
+outdir <- "/media/hieunguyen/HD01/outdir/CRC1382"
 PROJECT <- "AGBruns_SNP_data_full_corrected_20240312"
 
 path.to.plink.res <- file.path(outdir, PROJECT, "PLINK_results", sprintf("maf_%s", maf), sprintf("%s_results_maf_%s", group, maf), "plink.assoc")
@@ -361,6 +362,28 @@ plink.res.original <- plink.res
 plink.res <- subset(plink.res, QC.ChiTest100_plate1 == "PASS" & QC.ChiTest100_plate2 == "PASS" &
          QC.Call.Freq_plate1 == "PASS" & QC.Call.Freq_plate2 == "PASS" &
          QC.Minor.Freq_plate1 == "PASS" & QC.Minor.Freq_plate2 == "PASS")
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, results='asis', fig.width=10, fig.height=6}
+d <- read.table(path.to.plink.res, header = TRUE)
+obs <- sort(d$P)
+obs <- obs[!is.na(obs)]
+obs <- obs[is.finite(-log10(obs))]
+
+lobs <- -(log10(obs))
+
+exp <- c(1:length(obs)) 
+lexp <- -(log10(exp / (length(exp)+1)))
+
+chisq.plink <- qchisq(1-obs,1)
+
+lambda <- round(median(chisq)/qchisq(0.5,1),2)
+plotdf <- data.frame(lexp = lexp, lobs = lobs)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, results='asis'}
+qq.chisq(chisq.plink, df = 1)
 ```
 
 ## Visualization
