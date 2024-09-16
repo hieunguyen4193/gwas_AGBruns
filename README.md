@@ -1,2 +1,1 @@
-# AGBruns_SNP_data_full
-# gwas_AGBruns
+# GWAS data analysis (AG Bruns)
